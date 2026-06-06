@@ -81,13 +81,13 @@ df_alloc = pd.read_csv("data/allocations.csv")
 # Supported anchors: 'bottom_left_back', 'center'
 viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
 
-# 3. Render Top View Footprint (returns a Plotly Figure)
-fig_top = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume")
+# 3. Render Top View Footprint with labeling (returns a Plotly Figure)
+fig_top = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", show_labels=True, label_content="indicator")
 fig_top.show()
 
-# 4. Filter for Aisle A1 and render Front elevation (returns a Plotly Figure)
+# 4. Filter for Aisle A1 and render Front elevation with both address and indicator
 df_aisle = df_loc[df_loc['loc_id'].str.startswith('A1')]
-fig_front = viz.plot_front(df_aisle, df_parts, df_alloc, color_mode="abc")
+fig_front = viz.plot_front(df_aisle, df_parts, df_alloc, color_mode="abc", show_labels=True, label_content="address")
 fig_front.show()
 ```
 
@@ -141,6 +141,16 @@ When a slot stores multiple items, attributes are aggregated inside the library:
 When collapsing the vertical Z-axis to show a 2D top footprint:
 *   **Continuous variables** (volume fill, weight, demand, trips) are calculated as the **average** of all bins sharing the same `(pos_x, pos_y)` coordinate.
 *   **ABC Class** is averaged by converting classes to numerical weights (`A=3, B=2, C=1, Empty=0`), taking the mean, and mapping the resulting average back to a continuous color gradient from C to A.
+
+### Text Labeling & Indicators inside Location Rectangles
+To display text overlays directly inside each location box:
+*   **Enable labeling** by setting `show_labels=True`.
+*   **Configure content** using `label_content`:
+    *   `"indicator"` (default): Displays the numeric or percentage value matching the active `color_mode` (Volume %, total demand, total trips, or total weight). In `abc` class mode, this automatically falls back to showing the address range.
+    *   `"address"`: Displays the end portion of the location ID (e.g., `00001` or a collapsed vertical stack range like `00001-16`).
+    *   `"both"`: Displays both the address and the indicator on separate lines.
+*   **Auto-sizing Text**: Font sizes are dynamically calculated in real-time to fit the physical text boundaries of the rectangle without overlapping.
+
 
 ---
 

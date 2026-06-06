@@ -69,3 +69,40 @@ def test_plot_front_matplotlib(datasets):
     fig = viz.plot_front(df_loc_filtered, df_parts, df_alloc, color_mode="volume", engine="matplotlib")
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
+
+def test_labels_and_indicators(datasets):
+    df_loc, df_parts, df_alloc = datasets
+    viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
+    
+    # Test top view with show_labels and different label_content configurations
+    for content_mode in ["indicator", "address"]:
+        for color_mode in ["volume", "demand", "trips", "weight", "abc"]:
+            fig_plotly = viz.plot_top(df_loc, df_parts, df_alloc, color_mode=color_mode, 
+                                      engine="plotly", show_labels=True, label_content=content_mode)
+            assert isinstance(fig_plotly, go.Figure)
+            
+            fig_plt = viz.plot_top(df_loc, df_parts, df_alloc, color_mode=color_mode, 
+                                   engine="matplotlib", show_labels=True, label_content=content_mode)
+            assert isinstance(fig_plt, plt.Figure)
+            plt.close(fig_plt)
+
+    # Test front view with show_labels and different label_content configurations
+    df_loc_filtered = df_loc[df_loc['loc_id'].str.startswith('A1')]
+    for content_mode in ["indicator", "address"]:
+        for color_mode in ["volume", "demand", "trips", "weight", "abc"]:
+            fig_plotly = viz.plot_front(df_loc_filtered, df_parts, df_alloc, color_mode=color_mode, 
+                                        engine="plotly", show_labels=True, label_content=content_mode)
+            assert isinstance(fig_plotly, go.Figure)
+            
+            fig_plt = viz.plot_front(df_loc_filtered, df_parts, df_alloc, color_mode=color_mode, 
+                                     engine="matplotlib", show_labels=True, label_content=content_mode)
+            assert isinstance(fig_plt, plt.Figure)
+            plt.close(fig_plt)
+
+    # Verify that 'both' raises ValueError
+    with pytest.raises(ValueError):
+        viz.plot_top(df_loc, df_parts, df_alloc, show_labels=True, label_content="both")
+    with pytest.raises(ValueError):
+        viz.plot_front(df_loc_filtered, df_parts, df_alloc, show_labels=True, label_content="both")
+
+

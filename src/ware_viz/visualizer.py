@@ -63,6 +63,80 @@ class WarehouseVisualizer:
             raise ValueError("anchor_point must be 'bottom_left_back' or 'center'")
         self.anchor_point = anchor_point
 
+    def _get_end_address(self, loc_id):
+        if not isinstance(loc_id, str):
+            loc_id = str(loc_id)
+        for delimiter in ['-', '_', '/', ' ']:
+            if delimiter in loc_id:
+                parts = loc_id.split(delimiter)
+                for p in reversed(parts):
+                    if p.strip():
+                        val = p.strip()
+                        return val[-3:] if len(val) >= 3 else val
+        return loc_id[-3:] if len(loc_id) >= 3 else loc_id
+
+    def _get_end_address_range(self, loc_ids, sep="\n"):
+        if not loc_ids:
+            return ""
+        unique_ids = [x.strip() for x in loc_ids.split(',') if x.strip()]
+        if not unique_ids:
+            return ""
+        if len(unique_ids) == 1:
+            return self._get_end_address(unique_ids[0])
+        
+        first_end = self._get_end_address(unique_ids[0])
+        last_end = self._get_end_address(unique_ids[-1])
+        
+        return f"{first_end}{sep}{last_end}"
+
+    def _get_matplotlib_fontsize(self, ax, text, w, h, max_fs=9, min_fs=1):
+        try:
+            bbox = ax.transData.transform([(0, 0), (w, h)])
+            w_pixels = bbox[1][0] - bbox[0][0]
+            h_pixels = bbox[1][1] - bbox[0][1]
+            
+            fig = ax.get_figure()
+            dpi = fig.dpi
+            w_pts = w_pixels * 72.0 / dpi
+            h_pts = h_pixels * 72.0 / dpi
+            
+            lines = text.split('\n')
+            max_len = max(len(line) for line in lines) if lines else 1
+            line_count = len(lines) if lines else 1
+            
+            fs_w = w_pts / (max_len * 0.85)
+            fs_h = h_pts / (line_count * 1.4)
+            
+            fs = min(fs_w, fs_h)
+            return min(max_fs, max(min_fs, int(fs)))
+        except Exception:
+            return 7
+
+    def _get_plotly_fontsize(self, text, w, h, total_range_x, total_range_y, fig_width=1000, fig_height=900, max_fs=9, min_fs=1):
+        try:
+            # Deduct margins for inner plotting area
+            inner_w = max(100.0, fig_width - 180.0)
+            inner_h = max(100.0, fig_height - 150.0)
+            
+            scale_x = inner_w / total_range_x if total_range_x > 0 else 1.0
+            scale_y = inner_h / total_range_y if total_range_y > 0 else 1.0
+            scale = min(scale_x, scale_y)
+            
+            w_px = w * scale
+            h_px = h * scale
+            
+            lines = text.split('\n')
+            max_len = max(len(line) for line in lines) if lines else 1
+            line_count = len(lines) if lines else 1
+            
+            fs_w = w_px / (max_len * 0.85)
+            fs_h = h_px / (line_count * 1.4)
+            
+            fs = min(fs_w, fs_h)
+            return min(max_fs, max(min_fs, int(fs)))
+        except Exception:
+            return 7
+
     def _prepare_data(self, locations_df, parts_df=None, allocations_df=None):
         """
         Validates schemas, joins datasets, aggregates allocations for multi-SKU bins,
@@ -214,10 +288,14 @@ class WarehouseVisualizer:
             return interpolate_color('#f1c40f', '#e74c3c', val_norm)
 
     def plot_top(self, locations_df, parts_df=None, allocations_df=None, color_mode="volume", 
-                 demand_thresholds=None, volume_thresholds=None, abc_colors=None, engine="plotly"):
+                 demand_thresholds=None, volume_thresholds=None, abc_colors=None, engine="plotly",
+                 show_labels=False, label_content="indicator"):
         """
         Renders a 2D top-down footprint map of the warehouse layout.
         """
+        if label_content not in ["indicator", "address"]:
+            raise ValueError("label_content must be 'indicator' or 'address'")
+
         # 1. Prepare data
         df = self._prepare_data(locations_df, parts_df, allocations_df)
         
@@ -256,6 +334,19 @@ class WarehouseVisualizer:
             hover_x = []
             hover_y = []
             hover_text = []
+            
+            # Compute total range for Plotly font size calculation
+            min_x = df_2d['pos_x'].min()
+            max_x = (df_2d['pos_x'] + df_2d['loc_width']).max()
+            min_y = df_2d['pos_y'].min()
+            max_y = (df_2d['pos_y'] + df_2d['loc_depth']).max()
+            total_range_x = max(1.0, max_x - min_x)
+            total_range_y = max(1.0, max_y - min_y)
+            
+            label_x = []
+            label_y = []
+            label_texts = []
+            label_sizes = []
             
             for _, row in df_2d.iterrows():
                 px, py = row['pos_x'], row['pos_y']
@@ -320,6 +411,35 @@ class WarehouseVisualizer:
                         fillcolor=fill_color
                     ))
                     
+                if show_labels:
+                    indicator = ""
+                    if color_mode == "volume":
+                        indicator = f"{util*100:.0f}%"
+                    elif color_mode == "demand":
+                        indicator = f"{row['total_demand']:.0f}"
+                    elif color_mode == "trips":
+                        indicator = f"{row['total_trips']:.0f}"
+                    elif color_mode == "weight":
+                        indicator = f"{row['total_weight']:.1f}"
+                    
+                    effective_label_content = label_content
+                    if color_mode == "abc" and label_content == "indicator":
+                        effective_label_content = "address"
+                        
+                    if effective_label_content == "address":
+                        label_text = self._get_end_address_range(row['loc_id'], sep="<br>")
+                    elif effective_label_content == "indicator":
+                        label_text = indicator
+                    else:
+                        label_text = ""
+                        
+                    if label_text:
+                        fs = self._get_plotly_fontsize(label_text.replace("<br>", "\n"), w, d, total_range_x, total_range_y)
+                        label_x.append(px + w / 2.0)
+                        label_y.append(py + d / 2.0)
+                        label_texts.append(label_text)
+                        label_sizes.append(fs)
+                    
             fig.add_trace(go.Scatter(
                 x=hover_x, y=hover_y,
                 mode='markers',
@@ -328,6 +448,16 @@ class WarehouseVisualizer:
                 hoverinfo='text',
                 showlegend=False
             ))
+            
+            if show_labels and label_texts:
+                fig.add_trace(go.Scatter(
+                    x=label_x, y=label_y,
+                    mode='text',
+                    text=label_texts,
+                    textposition='middle center',
+                    textfont=dict(size=label_sizes, color='#555555', family='Arial, sans-serif'),
+                    showlegend=False
+                ))
             
             fig.update_layout(
                 shapes=shapes,
@@ -387,16 +517,53 @@ class WarehouseVisualizer:
             ax.set_xlabel(f"X coordinate ({self.unit})")
             ax.set_ylabel(f"Y coordinate ({self.unit})")
             ax.set_title(f"Warehouse Top View Footprint (Color Mode: {color_mode.capitalize()})")
+            
+            if show_labels:
+                for _, row in df_2d.iterrows():
+                    px, py = row['pos_x'], row['pos_y']
+                    w, d = row['loc_width'], row['loc_depth']
+                    util = row['volume_utilization']
+                    
+                    indicator = ""
+                    if color_mode == "volume":
+                        indicator = f"{util*100:.0f}%"
+                    elif color_mode == "demand":
+                        indicator = f"{row['total_demand']:.0f}"
+                    elif color_mode == "trips":
+                        indicator = f"{row['total_trips']:.0f}"
+                    elif color_mode == "weight":
+                        indicator = f"{row['total_weight']:.1f}"
+                    
+                    effective_label_content = label_content
+                    if color_mode == "abc" and label_content == "indicator":
+                        effective_label_content = "address"
+                        
+                    if effective_label_content == "address":
+                        label_text = self._get_end_address_range(row['loc_id'], sep="\n")
+                    elif effective_label_content == "indicator":
+                        label_text = indicator
+                    else:
+                        label_text = ""
+                        
+                    if label_text:
+                        fs = self._get_matplotlib_fontsize(ax, label_text, w, d)
+                        ax.text(px + w / 2.0, py + d / 2.0, label_text, 
+                                ha='center', va='center', fontsize=fs, color='#555555')
+            
             return fig
         else:
             raise ValueError("Engine must be 'plotly' or 'matplotlib'")
 
     def plot_front(self, locations_df, parts_df=None, allocations_df=None, color_mode="volume", 
                    demand_thresholds=None, volume_thresholds=None, abc_colors=None, 
-                   use_physical_spacing=True, engine="plotly"):
+                   use_physical_spacing=True, engine="plotly",
+                   show_labels=False, label_content="indicator"):
         """
         Renders the vertical layout of a specific row or section of racks.
         """
+        if label_content not in ["indicator", "address"]:
+            raise ValueError("label_content must be 'indicator' or 'address'")
+
         # 1. Prepare data
         df = self._prepare_data(locations_df, parts_df, allocations_df)
         
@@ -425,12 +592,49 @@ class WarehouseVisualizer:
             hover_y = []
             hover_text = []
             
-            # Keep track of sequential x if not using physical coordinates
+            label_x = []
+            label_y = []
+            label_texts = []
+            label_sizes = []
+            
+            # First pass: calculate coordinates to find ranges for font scaling
+            coords_x = []
+            coords_y = []
             cur_seq_x = 0
-            seq_gap = 50.0  # default spacing gap
+            seq_gap = 50.0
             prev_horiz_coord = None
             
-            # Pre-group by stack to manage coordinates
+            for (h_val, z_val), group in df_sorted.groupby([horiz_col, 'pos_z']):
+                row = group.iloc[0]
+                px = row[horiz_col]
+                pz = row['pos_z']
+                w = row[width_col]
+                h = row['loc_height']
+                
+                if use_physical_spacing:
+                    draw_x = px
+                else:
+                    if prev_horiz_coord is not None and h_val != prev_horiz_coord:
+                        cur_seq_x += w + seq_gap
+                    draw_x = cur_seq_x
+                    prev_horiz_coord = h_val
+                    
+                coords_x.append(draw_x)
+                coords_x.append(draw_x + w)
+                coords_y.append(pz)
+                coords_y.append(pz + h)
+                
+            min_x = min(coords_x) if coords_x else 0.0
+            max_x = max(coords_x) if coords_x else 1.0
+            min_y = min(coords_y) if coords_y else 0.0
+            max_y = max(coords_y) if coords_y else 1.0
+            total_range_x = max(1.0, max_x - min_x)
+            total_range_y = max(1.0, max_y - min_y)
+            
+            # Reset for main loop
+            cur_seq_x = 0
+            prev_horiz_coord = None
+            
             for (h_val, z_val), group in df_sorted.groupby([horiz_col, 'pos_z']):
                 # Since pos_x/pos_y and pos_z define unique bins
                 row = group.iloc[0]
@@ -508,6 +712,35 @@ class WarehouseVisualizer:
                         fillcolor=fill_color
                     ))
                     
+                if show_labels:
+                    indicator = ""
+                    if color_mode == "volume":
+                        indicator = f"{util*100:.0f}%"
+                    elif color_mode == "demand":
+                        indicator = f"{row['total_demand']:.0f}"
+                    elif color_mode == "trips":
+                        indicator = f"{row['total_trips']:.0f}"
+                    elif color_mode == "weight":
+                        indicator = f"{row['total_weight']:.1f}"
+                    
+                    effective_label_content = label_content
+                    if color_mode == "abc" and label_content == "indicator":
+                        effective_label_content = "address"
+                        
+                    if effective_label_content == "address":
+                        label_text = self._get_end_address(row['loc_id'])
+                    elif effective_label_content == "indicator":
+                        label_text = indicator
+                    else:
+                        label_text = ""
+                        
+                    if label_text:
+                        fs = self._get_plotly_fontsize(label_text, w, h, total_range_x, total_range_y, fig_width=1200, fig_height=700)
+                        label_x.append(draw_x + w / 2.0)
+                        label_y.append(pz + h / 2.0)
+                        label_texts.append(label_text)
+                        label_sizes.append(fs)
+                    
             fig.add_trace(go.Scatter(
                 x=hover_x, y=hover_y,
                 mode='markers',
@@ -516,6 +749,16 @@ class WarehouseVisualizer:
                 hoverinfo='text',
                 showlegend=False
             ))
+            
+            if show_labels and label_texts:
+                fig.add_trace(go.Scatter(
+                    x=label_x, y=label_y,
+                    mode='text',
+                    text=label_texts,
+                    textposition='middle center',
+                    textfont=dict(size=label_sizes, color='#555555', family='Arial, sans-serif'),
+                    showlegend=False
+                ))
             
             fig.update_layout(
                 shapes=shapes,
@@ -588,6 +831,53 @@ class WarehouseVisualizer:
             ax.set_xlabel(f"Horizontal position ({self.unit})")
             ax.set_ylabel(f"Elevation Z ({self.unit})")
             ax.set_title(f"Warehouse Front elevation view (Color Mode: {color_mode.capitalize()})")
+            
+            if show_labels:
+                cur_seq_x = 0
+                prev_horiz_coord = None
+                
+                for (h_val, z_val), group in df_sorted.groupby([horiz_col, 'pos_z']):
+                    row = group.iloc[0]
+                    px = row[horiz_col]
+                    pz = row['pos_z']
+                    w = row[width_col]
+                    h = row['loc_height']
+                    util = row['volume_utilization']
+                    
+                    if use_physical_spacing:
+                        draw_x = px
+                    else:
+                        if prev_horiz_coord is not None and h_val != prev_horiz_coord:
+                            cur_seq_x += w + seq_gap
+                        draw_x = cur_seq_x
+                        prev_horiz_coord = h_val
+                        
+                    indicator = ""
+                    if color_mode == "volume":
+                        indicator = f"{util*100:.0f}%"
+                    elif color_mode == "demand":
+                        indicator = f"{row['total_demand']:.0f}"
+                    elif color_mode == "trips":
+                        indicator = f"{row['total_trips']:.0f}"
+                    elif color_mode == "weight":
+                        indicator = f"{row['total_weight']:.1f}"
+                    
+                    effective_label_content = label_content
+                    if color_mode == "abc" and label_content == "indicator":
+                        effective_label_content = "address"
+                        
+                    if effective_label_content == "address":
+                        label_text = self._get_end_address(row['loc_id'])
+                    elif effective_label_content == "indicator":
+                        label_text = indicator
+                    else:
+                        label_text = ""
+                        
+                    if label_text:
+                        fs = self._get_matplotlib_fontsize(ax, label_text, w, h)
+                        ax.text(draw_x + w / 2.0, pz + h / 2.0, label_text, 
+                                ha='center', va='center', fontsize=fs, color='#555555')
+            
             return fig
         else:
             raise ValueError("Engine must be 'plotly' or 'matplotlib'")
