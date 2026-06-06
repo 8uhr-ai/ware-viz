@@ -1,0 +1,71 @@
+import os
+import pandas as pd
+import pytest
+from ware_viz import WarehouseVisualizer
+import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+@pytest.fixture
+def datasets():
+    loc_file = os.path.join(DATA_DIR, "locations.csv")
+    parts_file = os.path.join(DATA_DIR, "parts.csv")
+    alloc_file = os.path.join(DATA_DIR, "allocations.csv")
+    
+    # Check if files exist
+    if not (os.path.exists(loc_file) and os.path.exists(parts_file) and os.path.exists(alloc_file)):
+        pytest.skip("Converted CSV datasets not available yet.")
+        
+    df_loc = pd.read_csv(loc_file)
+    df_parts = pd.read_csv(parts_file)
+    df_alloc = pd.read_csv(alloc_file)
+    return df_loc, df_parts, df_alloc
+
+def test_visualizer_initialization():
+    viz = WarehouseVisualizer(unit="cm", anchor_point="center")
+    assert viz.unit == "cm"
+    assert viz.anchor_point == "center"
+    
+    with pytest.raises(ValueError):
+        WarehouseVisualizer(anchor_point="invalid")
+
+def test_plot_top_plotly(datasets):
+    df_loc, df_parts, df_alloc = datasets
+    viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
+    
+    # Plot volume fill
+    fig = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", engine="plotly")
+    assert isinstance(fig, go.Figure)
+    
+    # Plot demand
+    fig_demand = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="demand", engine="plotly")
+    assert isinstance(fig_demand, go.Figure)
+
+def test_plot_top_matplotlib(datasets):
+    df_loc, df_parts, df_alloc = datasets
+    viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
+    
+    fig = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", engine="matplotlib")
+    assert isinstance(fig, plt.Figure)
+    plt.close(fig)
+
+def test_plot_front_plotly(datasets):
+    df_loc, df_parts, df_alloc = datasets
+    viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
+    
+    # Filter for a single aisle A1 to test front elevation
+    df_loc_filtered = df_loc[df_loc['loc_id'].str.startswith('A1')]
+    
+    fig = viz.plot_front(df_loc_filtered, df_parts, df_alloc, color_mode="volume", engine="plotly")
+    assert isinstance(fig, go.Figure)
+
+def test_plot_front_matplotlib(datasets):
+    df_loc, df_parts, df_alloc = datasets
+    viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
+    
+    df_loc_filtered = df_loc[df_loc['loc_id'].str.startswith('A1')]
+    
+    fig = viz.plot_front(df_loc_filtered, df_parts, df_alloc, color_mode="volume", engine="matplotlib")
+    assert isinstance(fig, plt.Figure)
+    plt.close(fig)
