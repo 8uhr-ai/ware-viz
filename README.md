@@ -241,3 +241,7 @@ pytest tests/
 *   `test_visualizer_initialization`: Checks that visualizer configurations (units, coordinate anchoring) are validated correctly.
 *   `test_plot_top_plotly` & `test_plot_top_matplotlib`: Verifies that top footprint views are generated correctly for both Plotly and Matplotlib engines.
 *   `test_plot_front_plotly` & `test_plot_front_matplotlib`: Verifies that front elevation views are generated correctly for both Plotly and Matplotlib engines.
+
+---
+
+View our future plans in the [Roadmap](ROADMAP.md).
