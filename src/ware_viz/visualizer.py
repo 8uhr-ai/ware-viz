@@ -500,6 +500,8 @@ class WarehouseVisualizer:
                     showlegend=False
                 ))
             
+            has_legend = False
+
             if dotted_lines:
                 for line in dotted_lines:
                     coord = line.get('coordinate')
@@ -508,7 +510,6 @@ class WarehouseVisualizer:
                     color = line.get('color', '#7f8c8d')
                     linestyle = line.get('linestyle', '--')
                     linewidth = line.get('linewidth', 1.5)
-                    align = line.get('label_align')
                     
                     dash = 'dash' if linestyle == '--' else 'dot' if linestyle == ':' else 'solid'
                     
@@ -517,25 +518,21 @@ class WarehouseVisualizer:
                             type="line", x0=coord, y0=min_y, x1=coord, y1=max_y,
                             line=dict(color=color, width=linewidth, dash=dash)
                         ))
-                        if label:
-                            y_pos = min_y + (max_y - min_y) * 0.05 if align == 'bottom' else max_y - (max_y - min_y) * 0.05
-                            fig.add_annotation(
-                                x=coord, y=y_pos, text=label, showarrow=False,
-                                textangle=-90, font=dict(color=color, size=10, weight='bold'),
-                                xanchor='right'
-                            )
                     else: # y
                         shapes.append(dict(
                             type="line", x0=min_x, y0=coord, x1=max_x, y1=coord,
                             line=dict(color=color, width=linewidth, dash=dash)
                         ))
-                        if label:
-                            x_pos = min_x + (max_x - min_x) * 0.05 if align == 'left' else max_x - (max_x - min_x) * 0.05
-                            fig.add_annotation(
-                                x=x_pos, y=coord, text=label, showarrow=False,
-                                font=dict(color=color, size=10, weight='bold'),
-                                yanchor='bottom'
-                            )
+
+                    if label:
+                        has_legend = True
+                        fig.add_trace(go.Scatter(
+                            x=[None], y=[None],
+                            mode='lines',
+                            line=dict(color=color, width=linewidth, dash=dash),
+                            name=label,
+                            showlegend=True
+                        ))
 
             if custom_areas:
                 for area in custom_areas:
@@ -550,11 +547,10 @@ class WarehouseVisualizer:
                     ay1 = max_y if ay1 is None else ay1
                     
                     label = area.get('label', '')
-                    fill_color = area.get('fill_color', 'rgba(52, 152, 219, 0.1)')
+                    fill_color = area.get('fill_color', 'rgba(52, 152, 219, 0.25)')
                     border_color = area.get('border_color', 'rgba(52, 152, 219, 0.3)')
                     border_style = area.get('border_style', '-')
                     border_width = area.get('border_width', 1.0)
-                    align = area.get('label_align', 'center')
                     
                     dash = 'dash' if border_style == '--' else 'dot' if border_style == ':' else 'solid'
                     
@@ -566,32 +562,23 @@ class WarehouseVisualizer:
                     ))
                     
                     if label:
-                        if align == 'top_left':
-                            tx, ty = ax0 + (ax1 - ax0) * 0.02, ay1 - (ay1 - ay0) * 0.05
-                            xanch, yanch = 'left', 'top'
-                        elif align == 'top_right':
-                            tx, ty = ax1 - (ax1 - ax0) * 0.02, ay1 - (ay1 - ay0) * 0.05
-                            xanch, yanch = 'right', 'top'
-                        elif align == 'bottom_left':
-                            tx, ty = ax0 + (ax1 - ax0) * 0.02, ay0 + (ay1 - ay0) * 0.05
-                            xanch, yanch = 'left', 'bottom'
-                        elif align == 'bottom_right':
-                            tx, ty = ax1 - (ax1 - ax0) * 0.02, ay0 + (ay1 - ay0) * 0.05
-                            xanch, yanch = 'right', 'bottom'
-                        else: # center
-                            tx, ty = ax0 + (ax1 - ax0) / 2.0, ay0 + (ay1 - ay0) / 2.0
-                            xanch, yanch = 'center', 'middle'
-                            
-                        txt_color = border_color if border_color != 'none' else '#2980b9'
-                        
-                        fig.add_annotation(
-                            x=tx, y=ty, text=label, showarrow=False,
-                            font=dict(color=txt_color, size=10, weight='bold'),
-                            xanchor=xanch, yanchor=yanch
-                        )
+                        has_legend = True
+                        fig.add_trace(go.Scatter(
+                            x=[None], y=[None],
+                            mode='markers',
+                            marker=dict(
+                                size=12,
+                                color=fill_color,
+                                symbol='square',
+                                line=dict(color=border_color, width=border_width) if border_color != 'none' else dict(width=0)
+                            ),
+                            name=label,
+                            showlegend=True
+                        ))
 
             fig.update_layout(
                 shapes=shapes,
+                showlegend=has_legend,
                 title=f"Warehouse Top View Footprint (Color Mode: {color_mode.capitalize()})",
                 xaxis=dict(title=f"X coordinate ({self.unit})", showgrid=True, zeroline=False),
                 yaxis=dict(title=f"Y coordinate ({self.unit})", scaleanchor="x", scaleratio=1, showgrid=True, zeroline=False, autorange="reversed"),
@@ -682,6 +669,8 @@ class WarehouseVisualizer:
                         ax.text(px + w / 2.0, py + d / 2.0, label_text, 
                                 ha='center', va='center', fontsize=fs, color='#555555')
             
+            legend_handles = []
+
             if dotted_lines:
                 xlim = ax.get_xlim()
                 ylim = ax.get_ylim()
@@ -694,30 +683,17 @@ class WarehouseVisualizer:
                     color = line.get('color', '#7f8c8d')
                     linestyle = line.get('linestyle', '--')
                     linewidth = line.get('linewidth', 1.5)
-                    align = line.get('label_align')
                     
                     if axis == 'x':
                         ax.axvline(x=coord, color=color, linestyle=linestyle, linewidth=linewidth)
-                        if label:
-                            if align == 'bottom':
-                                y_pos = min_y + (max_y - min_y) * 0.02
-                                va = 'bottom'
-                            else: # top
-                                y_pos = max_y - (max_y - min_y) * 0.02
-                                va = 'top'
-                            ax.text(coord, y_pos, f" {label} ", rotation=90, color=color, 
-                                    va=va, ha='right', fontsize=8, fontweight='bold')
                     else: # y
                         ax.axhline(y=coord, color=color, linestyle=linestyle, linewidth=linewidth)
-                        if label:
-                            if align == 'left':
-                                x_pos = min_x + (max_x - min_x) * 0.02
-                                ha = 'left'
-                            else: # right
-                                x_pos = max_x - (max_x - min_x) * 0.02
-                                ha = 'right'
-                            ax.text(x_pos, coord, f" {label} ", color=color, 
-                                    va='bottom', ha=ha, fontsize=8, fontweight='bold')
+
+                    if label:
+                        import matplotlib.lines as mlines
+                        legend_handles.append(mlines.Line2D(
+                            [], [], color=color, linestyle=linestyle, linewidth=linewidth, label=label
+                        ))
 
             if custom_areas:
                 xlim = ax.get_xlim()
@@ -736,11 +712,10 @@ class WarehouseVisualizer:
                     ay1 = max_y if ay1 is None else ay1
                     
                     label = area.get('label', '')
-                    fill_color = self._parse_rgba_for_matplotlib(area.get('fill_color', 'rgba(52, 152, 219, 0.1)'))
+                    fill_color = self._parse_rgba_for_matplotlib(area.get('fill_color', 'rgba(52, 152, 219, 0.25)'))
                     border_color = self._parse_rgba_for_matplotlib(area.get('border_color', 'rgba(52, 152, 219, 0.3)'))
                     border_style = area.get('border_style', '-')
                     border_width = area.get('border_width', 1.0)
-                    align = area.get('label_align', 'center')
                     
                     rect = patches.Rectangle((ax0, ay0), ax1 - ax0, ay1 - ay0, 
                                              linewidth=border_width, edgecolor=border_color, 
@@ -748,27 +723,12 @@ class WarehouseVisualizer:
                     ax.add_patch(rect)
                     
                     if label:
-                        if align == 'top_left':
-                            tx, ty = ax0 + (ax1 - ax0) * 0.02, ay1 - (ay1 - ay0) * 0.05
-                            ha, va = 'left', 'top'
-                        elif align == 'top_right':
-                            tx, ty = ax1 - (ax1 - ax0) * 0.02, ay1 - (ay1 - ay0) * 0.05
-                            ha, va = 'right', 'top'
-                        elif align == 'bottom_left':
-                            tx, ty = ax0 + (ax1 - ax0) * 0.02, ay0 + (ay1 - ay0) * 0.05
-                            ha, va = 'left', 'bottom'
-                        elif align == 'bottom_right':
-                            tx, ty = ax1 - (ax1 - ax0) * 0.02, ay0 + (ay1 - ay0) * 0.05
-                            ha, va = 'right', 'bottom'
-                        else: # center
-                            tx, ty = ax0 + (ax1 - ax0) / 2.0, ay0 + (ay1 - ay0) / 2.0
-                            ha, va = 'center', 'center'
-                            
-                        txt_color = border_color if border_color != 'none' else '#2980b9'
-                        if isinstance(txt_color, tuple) and len(txt_color) == 4:
-                            txt_color = txt_color[:3]
-                        
-                        ax.text(tx, ty, label, color=txt_color, ha=ha, va=va, fontsize=8, fontweight='bold')
+                        legend_handles.append(patches.Patch(
+                            facecolor=fill_color, edgecolor=border_color, linestyle=border_style, linewidth=border_width, label=label
+                        ))
+
+            if legend_handles:
+                ax.legend(handles=legend_handles, bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
             
             return fig
         else:
@@ -993,6 +953,8 @@ class WarehouseVisualizer:
                     showlegend=False
                 ))
             
+            has_legend = False
+
             if dotted_lines:
                 for line in dotted_lines:
                     coord = line.get('coordinate')
@@ -1001,7 +963,6 @@ class WarehouseVisualizer:
                     color = line.get('color', '#7f8c8d')
                     linestyle = line.get('linestyle', '--')
                     linewidth = line.get('linewidth', 1.5)
-                    align = line.get('label_align')
                     
                     dash = 'dash' if linestyle == '--' else 'dot' if linestyle == ':' else 'solid'
                     
@@ -1010,25 +971,21 @@ class WarehouseVisualizer:
                             type="line", x0=coord, y0=min_y, x1=coord, y1=max_y,
                             line=dict(color=color, width=linewidth, dash=dash)
                         ))
-                        if label:
-                            y_pos = min_y + (max_y - min_y) * 0.05 if align == 'bottom' else max_y - (max_y - min_y) * 0.05
-                            fig.add_annotation(
-                                x=coord, y=y_pos, text=label, showarrow=False,
-                                textangle=-90, font=dict(color=color, size=10, weight='bold'),
-                                xanchor='right'
-                            )
                     else: # y
                         shapes.append(dict(
                             type="line", x0=min_x, y0=coord, x1=max_x, y1=coord,
                             line=dict(color=color, width=linewidth, dash=dash)
                         ))
-                        if label:
-                            x_pos = min_x + (max_x - min_x) * 0.05 if align == 'left' else max_x - (max_x - min_x) * 0.05
-                            fig.add_annotation(
-                                x=x_pos, y=coord, text=label, showarrow=False,
-                                font=dict(color=color, size=10, weight='bold'),
-                                yanchor='bottom'
-                            )
+
+                    if label:
+                        has_legend = True
+                        fig.add_trace(go.Scatter(
+                            x=[None], y=[None],
+                            mode='lines',
+                            line=dict(color=color, width=linewidth, dash=dash),
+                            name=label,
+                            showlegend=True
+                        ))
 
             if custom_areas:
                 for area in custom_areas:
@@ -1043,11 +1000,10 @@ class WarehouseVisualizer:
                     ay1 = max_y if ay1 is None else ay1
                     
                     label = area.get('label', '')
-                    fill_color = area.get('fill_color', 'rgba(52, 152, 219, 0.1)')
+                    fill_color = area.get('fill_color', 'rgba(52, 152, 219, 0.25)')
                     border_color = area.get('border_color', 'rgba(52, 152, 219, 0.3)')
                     border_style = area.get('border_style', '-')
                     border_width = area.get('border_width', 1.0)
-                    align = area.get('label_align', 'center')
                     
                     dash = 'dash' if border_style == '--' else 'dot' if border_style == ':' else 'solid'
                     
@@ -1059,32 +1015,23 @@ class WarehouseVisualizer:
                     ))
                     
                     if label:
-                        if align == 'top_left':
-                            tx, ty = ax0 + (ax1 - ax0) * 0.02, ay1 - (ay1 - ay0) * 0.05
-                            xanch, yanch = 'left', 'top'
-                        elif align == 'top_right':
-                            tx, ty = ax1 - (ax1 - ax0) * 0.02, ay1 - (ay1 - ay0) * 0.05
-                            xanch, yanch = 'right', 'top'
-                        elif align == 'bottom_left':
-                            tx, ty = ax0 + (ax1 - ax0) * 0.02, ay0 + (ay1 - ay0) * 0.05
-                            xanch, yanch = 'left', 'bottom'
-                        elif align == 'bottom_right':
-                            tx, ty = ax1 - (ax1 - ax0) * 0.02, ay0 + (ay1 - ay0) * 0.05
-                            xanch, yanch = 'right', 'bottom'
-                        else: # center
-                            tx, ty = ax0 + (ax1 - ax0) / 2.0, ay0 + (ay1 - ay0) / 2.0
-                            xanch, yanch = 'center', 'middle'
-                            
-                        txt_color = border_color if border_color != 'none' else '#2980b9'
-                        
-                        fig.add_annotation(
-                            x=tx, y=ty, text=label, showarrow=False,
-                            font=dict(color=txt_color, size=10, weight='bold'),
-                            xanchor=xanch, yanchor=yanch
-                        )
+                        has_legend = True
+                        fig.add_trace(go.Scatter(
+                            x=[None], y=[None],
+                            mode='markers',
+                            marker=dict(
+                                size=12,
+                                color=fill_color,
+                                symbol='square',
+                                line=dict(color=border_color, width=border_width) if border_color != 'none' else dict(width=0)
+                            ),
+                            name=label,
+                            showlegend=True
+                        ))
 
             fig.update_layout(
                 shapes=shapes,
+                showlegend=has_legend,
                 title=f"Warehouse Front elevation view (Color Mode: {color_mode.capitalize()})",
                 xaxis=dict(title=f"Horizontal position ({self.unit})", showgrid=True, zeroline=False),
                 yaxis=dict(title=f"Elevation Z ({self.unit})", scaleanchor="x", scaleratio=1, showgrid=True, zeroline=False),
@@ -1204,6 +1151,8 @@ class WarehouseVisualizer:
                             ax.text(draw_x + w / 2.0, pz + h / 2.0, label_text, 
                                     ha='center', va='center', fontsize=fs, color='#555555')
             
+            legend_handles = []
+
             if dotted_lines:
                 xlim = ax.get_xlim()
                 ylim = ax.get_ylim()
@@ -1216,30 +1165,17 @@ class WarehouseVisualizer:
                     color = line.get('color', '#7f8c8d')
                     linestyle = line.get('linestyle', '--')
                     linewidth = line.get('linewidth', 1.5)
-                    align = line.get('label_align')
                     
                     if axis == 'x':
                         ax.axvline(x=coord, color=color, linestyle=linestyle, linewidth=linewidth)
-                        if label:
-                            if align == 'bottom':
-                                y_pos = min_y + (max_y - min_y) * 0.02
-                                va = 'bottom'
-                            else: # top
-                                y_pos = max_y - (max_y - min_y) * 0.02
-                                va = 'top'
-                            ax.text(coord, y_pos, f" {label} ", rotation=90, color=color, 
-                                    va=va, ha='right', fontsize=8, fontweight='bold')
                     else: # y
                         ax.axhline(y=coord, color=color, linestyle=linestyle, linewidth=linewidth)
-                        if label:
-                            if align == 'left':
-                                x_pos = min_x + (max_x - min_x) * 0.02
-                                ha = 'left'
-                            else: # right
-                                x_pos = max_x - (max_x - min_x) * 0.02
-                                ha = 'right'
-                            ax.text(x_pos, coord, f" {label} ", color=color, 
-                                    va='bottom', ha=ha, fontsize=8, fontweight='bold')
+
+                    if label:
+                        import matplotlib.lines as mlines
+                        legend_handles.append(mlines.Line2D(
+                            [], [], color=color, linestyle=linestyle, linewidth=linewidth, label=label
+                        ))
 
             if custom_areas:
                 xlim = ax.get_xlim()
@@ -1258,11 +1194,10 @@ class WarehouseVisualizer:
                     ay1 = max_y if ay1 is None else ay1
                     
                     label = area.get('label', '')
-                    fill_color = self._parse_rgba_for_matplotlib(area.get('fill_color', 'rgba(52, 152, 219, 0.1)'))
+                    fill_color = self._parse_rgba_for_matplotlib(area.get('fill_color', 'rgba(52, 152, 219, 0.25)'))
                     border_color = self._parse_rgba_for_matplotlib(area.get('border_color', 'rgba(52, 152, 219, 0.3)'))
                     border_style = area.get('border_style', '-')
                     border_width = area.get('border_width', 1.0)
-                    align = area.get('label_align', 'center')
                     
                     rect = patches.Rectangle((ax0, ay0), ax1 - ax0, ay1 - ay0, 
                                              linewidth=border_width, edgecolor=border_color, 
@@ -1270,27 +1205,12 @@ class WarehouseVisualizer:
                     ax.add_patch(rect)
                     
                     if label:
-                        if align == 'top_left':
-                            tx, ty = ax0 + (ax1 - ax0) * 0.02, ay1 - (ay1 - ay0) * 0.05
-                            ha, va = 'left', 'top'
-                        elif align == 'top_right':
-                            tx, ty = ax1 - (ax1 - ax0) * 0.02, ay1 - (ay1 - ay0) * 0.05
-                            ha, va = 'right', 'top'
-                        elif align == 'bottom_left':
-                            tx, ty = ax0 + (ax1 - ax0) * 0.02, ay0 + (ay1 - ay0) * 0.05
-                            ha, va = 'left', 'bottom'
-                        elif align == 'bottom_right':
-                            tx, ty = ax1 - (ax1 - ax0) * 0.02, ay0 + (ay1 - ay0) * 0.05
-                            ha, va = 'right', 'bottom'
-                        else: # center
-                            tx, ty = ax0 + (ax1 - ax0) / 2.0, ay0 + (ay1 - ay0) / 2.0
-                            ha, va = 'center', 'center'
-                            
-                        txt_color = border_color if border_color != 'none' else '#2980b9'
-                        if isinstance(txt_color, tuple) and len(txt_color) == 4:
-                            txt_color = txt_color[:3]
-                        
-                        ax.text(tx, ty, label, color=txt_color, ha=ha, va=va, fontsize=8, fontweight='bold')
+                        legend_handles.append(patches.Patch(
+                            facecolor=fill_color, edgecolor=border_color, linestyle=border_style, linewidth=border_width, label=label
+                        ))
+
+            if legend_handles:
+                ax.legend(handles=legend_handles, bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
             
             return fig
         else:

@@ -29,25 +29,27 @@ def run_demo():
     viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
     
     # Define custom lines and transparent area overlays for demo purposes
-    # Top View: Divide warehouse into Zone 1 (fast pick, first 3 rows top-down) and Zone 2 (bulk/slow storage, rest)
+    # Top View: Divide warehouse into Zone 1 (Small, Y from top to half the last corridor) and Zone 2 (Bulk, rest)
+    # Plus a vertical dotted line over the first 25% left of the warehouse (X = 600) representing Fast Zone.
     top_areas = [
-        dict(x0=None, x1=None, y0=-100, y1=3400, label="Zone 1 - Fast Pick", 
-             fill_color="rgba(231, 76, 60, 0.05)", border_color="rgba(231, 76, 60, 0.2)", border_style="--", label_align="top_left"),
-        dict(x0=None, x1=None, y0=3400, y1=6300, label="Zone 2 - Slow Storage", 
-             fill_color="rgba(52, 152, 219, 0.05)", border_color="rgba(52, 152, 219, 0.2)", border_style="--", label_align="top_left")
+        dict(x0=None, x1=None, y0=-100, y1=4250, label="Zone 1: Small", 
+             fill_color="rgba(231, 76, 60, 0.25)", border_color="rgba(231, 76, 60, 0.45)", border_style="-"),
+        dict(x0=None, x1=None, y0=4250, y1=6600, label="Zone 2: Bulk", 
+             fill_color="rgba(52, 152, 219, 0.25)", border_color="rgba(52, 152, 219, 0.45)", border_style="-")
     ]
     top_lines = [
-        dict(coordinate=3400, axis="y", label="Zone Boundary (Y=3400)", color="#7f8c8d", linestyle="--", linewidth=1.5)
+        dict(coordinate=4250, axis="y", label="Zone Boundary (Y=4250)", color="#7f8c8d", linestyle="--", linewidth=1.5),
+        dict(coordinate=600, axis="x", label="Fast Zone", color="#9b59b6", linestyle=":", linewidth=1.5)
     ]
     
     # Front View: Define standard optimal reach ergonomics zone (700mm to 1500mm height)
     front_areas = [
-        dict(x0=None, x1=None, y0=700, y1=1500, label="Ergo Zone (Optimal Reach)", 
-             fill_color="rgba(46, 204, 113, 0.05)", border_color="rgba(46, 204, 113, 0.2)", border_style="--", label_align="top_left")
+        dict(x0=None, x1=None, y0=700, y1=1500, label="Ergo Zone (700-1500mm)", 
+             fill_color="rgba(46, 204, 113, 0.25)", border_color="rgba(46, 204, 113, 0.45)", border_style="-")
     ]
     front_lines = [
-        dict(coordinate=700, axis="y", label="Ergo Lower Limit (700mm)", color="#27ae60", linestyle=":", linewidth=1.2, label_align="left"),
-        dict(coordinate=1500, axis="y", label="Ergo Upper Limit (1500mm)", color="#27ae60", linestyle=":", linewidth=1.2, label_align="left")
+        dict(coordinate=700, axis="y", label="Ergo Lower Limit (700mm)", color="#27ae60", linestyle=":", linewidth=1.2),
+        dict(coordinate=1500, axis="y", label="Ergo Upper Limit (1500mm)", color="#27ae60", linestyle=":", linewidth=1.2)
     ]
     
     # 4. Generate Top Footprint Views (Matplotlib, show_labels=True, label_content="indicator")
