@@ -2,12 +2,15 @@
 
 `ware-viz` is a lightweight, pure Python visualization library designed for engineers and researchers analyzing and/or optimizing warehouse slotting. It renders 2D layout diagrams (Top footprint views and Front elevation views) of inventory allocations, showing demand heatmaps, ABC analysis classes, volumetric fills, and package weight distributions to track storage and picking efficiency within user-defined constraints.
 
-<div style="display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 10px; margin-top: 15px; justify-content: center;">
-  <img src="plots/top_view_volume_utilization.png" width="200" style="flex-shrink: 0;" />
-  <img src="plots/top_view_abc_heatmap.png" width="200" style="flex-shrink: 0;" />
-  <img src="plots/front_view_aisle_a1_volume.png" width="240" style="flex-shrink: 0;" />
-  <img src="plots/front_view_aisle_a1_abc.png" width="240" style="flex-shrink: 0;" />
+### Top Footprint Views
+<div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+  <img src="plot_samples/top_view_volume.png" width="45%" />
+  <img src="plot_samples/top_view_abc.png" width="45%" />
 </div>
+
+### Front Elevation Views (Sequential Corridors)
+<img src="plot_samples/front_view_volume.png" width="100%" style="margin-bottom: 15px;" />
+<img src="plot_samples/front_view_abc.png" width="100%" />
 
 ---
 
@@ -85,8 +88,8 @@ viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
 fig_top = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", show_labels=True, label_content="indicator")
 fig_top.show()
 
-# 4. Filter for Aisle A1 and render Front elevation with both address and indicator
-df_aisle = df_loc[df_loc['loc_id'].str.startswith('A1')]
+# 4. Filter for Aisle A2 subset and render Front elevation with address labels
+df_aisle = df_loc[(df_loc['loc_id'].str.startswith('A2')) & (df_loc['pos_y'] <= 1990.0)]
 fig_front = viz.plot_front(df_aisle, df_parts, df_alloc, color_mode="abc", show_labels=True, label_content="address")
 fig_front.show()
 ```
@@ -137,20 +140,32 @@ When a slot stores multiple items, attributes are aggregated inside the library:
 *   **Pick Trips:** Calculated as `sum(demand / items_per_pkg)` to represent actual visits to the location.
 *   **ABC Class:** Resolved by taking the highest priority SKU (`A` > `B` > `C` > `Empty`).
 
-### 2D Footprint Aggregation (Top View)
-When collapsing the vertical Z-axis to show a 2D top footprint:
-*   **Continuous variables** (volume fill, weight, demand, trips) are calculated as the **average** of all bins sharing the same `(pos_x, pos_y)` coordinate.
-*   **ABC Class** is averaged by converting classes to numerical weights (`A=3, B=2, C=1, Empty=0`), taking the mean, and mapping the resulting average back to a continuous color gradient from C to A.
+### 2D Footprint Generation (Top View)
+*   **Rectangle Layout:** The spatial coordinates `(pos_x, pos_y)` represent the bottom-left corner of the slot's footprint. The footprint is drawn as a rectangle from `pos_x` to `pos_x + loc_width` horizontally, and from `pos_y` to `pos_y + loc_depth` vertically.
+*   **Vertical Axis Inversion:** To ensure proper visual layout where positive Y represents depth extending downward and positive X represents length extending rightward from a top-left origin `(0, 0)`, the vertical axis of the Top View plot is inverted (`autorange="reversed"` in Plotly, and `ax.invert_yaxis()` in Matplotlib).
+*   **Overlap Prevention:** To prevent visual overlap from stacked levels in the top view, layout data is collapsed to unique `(pos_x, pos_y)` footprints.
+    *   *Continuous variables* (volume fill, weight, demand, trips) are calculated as the **average** of all bins sharing that `(pos_x, pos_y)` stack.
+    *   *ABC Class* is averaged by converting classes to numerical weights (`A=3, B=2, C=1, Empty=0`), taking the mean, and mapping the resulting average back to a continuous color gradient from C to A.
+
+### 2D Sequential Elevation Generation (Front View)
+*   **Corridor Orientation Detection:** The visualizer automatically detects the corridor length axis by comparing the median spacing gaps of adjacent unique coordinates along X and Y. The axis with the smaller median spacing represents the corridor length axis (`horiz_col`), and the axis with the larger median spacing represents the across-corridor depth axis (`depth_col`).
+*   **Layout Flattening & Sequential Accumulation:** Instead of plotting coordinates on a global grid (which would overlay corridors behind one another), the layout is flattened into a sequential side-by-side elevation profile of vertical stacks.
+    1. Stacks are grouped by their unique `(pos_x, pos_y)` coordinates.
+    2. Stacks are sorted by `depth_col` (corridor) first to group corridors together, then by `horiz_col` (position along the corridor), and levels are sorted by `pos_z` vertically.
+    3. A horizontal accumulator `cursor_x` is initialized at 0.
+    4. For each stack, shelf slots are drawn using `(cursor_x, pos_z)` as the bottom-left anchor point, extending horizontally by `loc_width` and vertically by `loc_height`.
+    5. After drawing all levels in a stack, `cursor_x` is incremented by adding the slot's width plus a small stack gap (`seq_gap`, default `2.0`).
+    6. When transitioning to a new corridor, a larger corridor gap (`corridor_gap`, default `15.0`) is added to `cursor_x` to visually isolate the corridors.
+*   **Elevation Axis:** The vertical axis represents elevation directly, meaning ground level `pos_z = 0` starts at the bottom.
 
 ### Text Labeling & Indicators inside Location Rectangles
 To display text overlays directly inside each location box:
 *   **Enable labeling** by setting `show_labels=True`.
 *   **Configure content** using `label_content`:
     *   `"indicator"` (default): Displays the numeric or percentage value matching the active `color_mode` (Volume %, total demand, total trips, or total weight). In `abc` class mode, this automatically falls back to showing the address range.
-    *   `"address"`: Displays the end portion of the location ID (e.g., `00001` or a collapsed vertical stack range like `00001-16`).
-    *   `"both"`: Displays both the address and the indicator on separate lines.
-*   **Auto-sizing Text**: Font sizes are dynamically calculated in real-time to fit the physical text boundaries of the rectangle without overlapping.
-
+    *   `"address"`: Displays the end portion of the location ID (e.g., `001` to `999` using the last 3 characters, or a collapsed vertical stack range in top view like `001\n016`).
+*   *Note: Displaying both the address and indicator simultaneously is not supported due to the compact physical dimensions of the shelf slots.*
+*   **Auto-sizing Text:** Font sizes are dynamically calculated in real-time (down to `1pt` if necessary) to fit the physical text boundaries of each location box without overlapping or overflowing.
 
 ---
 
@@ -166,11 +181,10 @@ python demo.py
 **What the Demo Does:**
 1.  Loads pre-processed locations, parts, and allocations datasets from the `data/` folder.
 2.  Initializes a `WarehouseVisualizer` instance.
-3.  Generates and exports 4 visualization plots to a newly created `plots/` folder:
-    *   `top_view_volume_utilization.png`: A footprint view showing average volumetric occupancy.
-    *   `top_view_abc_heatmap.png`: A footprint view showing averaged ABC class categories.
-    *   `front_view_aisle_a1_volume.png`: A vertical rack elevation view of Aisle A1 showing proportional volume fill.
-    *   `front_view_aisle_a1_abc.png`: A vertical rack elevation view of Aisle A1 showing full-box ABC classes.
+3.  Generates and exports 11 visualization plots (full range of color modes and labeling possibilities) to a newly created `plot_samples/` folder:
+    *   `top_view_[volume/demand/trips/weight/abc].png`: Footprint views for each metric.
+    *   `front_view_[volume/demand/trips/weight/abc].png`: Vertical elevation views for the full warehouse layout.
+    *   `front_view_address.png`: Vertical elevation view with physical location addresses instead of metrics.
 
 ---
 

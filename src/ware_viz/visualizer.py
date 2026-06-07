@@ -91,14 +91,28 @@ class WarehouseVisualizer:
 
     def _get_matplotlib_fontsize(self, ax, text, w, h, max_fs=9, min_fs=1):
         try:
-            bbox = ax.transData.transform([(0, 0), (w, h)])
-            w_pixels = bbox[1][0] - bbox[0][0]
-            h_pixels = bbox[1][1] - bbox[0][1]
+            # Determine axis limits in data units
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
+            data_w = max(1.0, xlim[1] - xlim[0])
+            data_h = max(1.0, ylim[1] - ylim[0])
             
+            # Determine axes size in points
             fig = ax.get_figure()
-            dpi = fig.dpi
-            w_pts = w_pixels * 72.0 / dpi
-            h_pts = h_pixels * 72.0 / dpi
+            fig_w, fig_h = fig.get_size_inches()
+            pos = ax.get_position()
+            ax_w_pts = pos.width * fig_w * 72.0
+            ax_h_pts = pos.height * fig_h * 72.0
+            
+            # Scale factor (data to points)
+            scale_x = ax_w_pts / data_w
+            scale_y = ax_h_pts / data_h
+            
+            # For equal aspect ratio, scale is limited by the tighter dimension
+            scale = min(scale_x, scale_y)
+            
+            w_pts = w * scale
+            h_pts = h * scale
             
             lines = text.split('\n')
             max_len = max(len(line) for line in lines) if lines else 1
@@ -463,7 +477,7 @@ class WarehouseVisualizer:
                 shapes=shapes,
                 title=f"Warehouse Top View Footprint (Color Mode: {color_mode.capitalize()})",
                 xaxis=dict(title=f"X coordinate ({self.unit})", showgrid=True, zeroline=False),
-                yaxis=dict(title=f"Y coordinate ({self.unit})", scaleanchor="x", scaleratio=1, showgrid=True, zeroline=False),
+                yaxis=dict(title=f"Y coordinate ({self.unit})", scaleanchor="x", scaleratio=1, showgrid=True, zeroline=False, autorange="reversed"),
                 plot_bgcolor='white',
                 width=1000,
                 height=900
@@ -514,6 +528,7 @@ class WarehouseVisualizer:
             
             ax.autoscale()
             ax.set_aspect('equal')
+            ax.invert_yaxis()
             ax.set_xlabel(f"X coordinate ({self.unit})")
             ax.set_ylabel(f"Y coordinate ({self.unit})")
             ax.set_title(f"Warehouse Top View Footprint (Color Mode: {color_mode.capitalize()})")
@@ -556,8 +571,8 @@ class WarehouseVisualizer:
 
     def plot_front(self, locations_df, parts_df=None, allocations_df=None, color_mode="volume", 
                    demand_thresholds=None, volume_thresholds=None, abc_colors=None, 
-                   use_physical_spacing=True, engine="plotly",
-                   show_labels=False, label_content="indicator"):
+                   use_physical_spacing=False, engine="plotly",
+                   show_labels=False, label_content="indicator", seq_gap=2.0, corridor_gap=15.0):
         """
         Renders the vertical layout of a specific row or section of racks.
         """
@@ -568,18 +583,30 @@ class WarehouseVisualizer:
         df = self._prepare_data(locations_df, parts_df, allocations_df)
         
         # 2. Determine physical horizontal extension based on variance
-        range_x = df['pos_x'].max() - df['pos_x'].min() if len(df) > 0 else 0.0
-        range_y = df['pos_y'].max() - df['pos_y'].min() if len(df) > 0 else 0.0
+        # 2. Determine corridor orientation by comparing median coordinate gaps
+        uniq_x = np.sort(df['pos_x'].unique())
+        uniq_y = np.sort(df['pos_y'].unique())
         
-        if range_x >= range_y:
+        diff_x = np.diff(uniq_x) if len(uniq_x) > 1 else []
+        diff_y = np.diff(uniq_y) if len(uniq_y) > 1 else []
+        
+        med_diff_x = np.median(diff_x) if len(diff_x) > 0 else float('inf')
+        med_diff_y = np.median(diff_y) if len(diff_y) > 0 else float('inf')
+        
+        if med_diff_x <= med_diff_y:
             horiz_col = 'pos_x'
-            width_col = 'loc_width'
+            depth_col = 'pos_y'
         else:
             horiz_col = 'pos_y'
-            width_col = 'loc_depth'
+            depth_col = 'pos_x'
             
-        # 3. Sort locations vertically (pos_z) and horizontally (horiz_col)
-        df_sorted = df.sort_values(by=[horiz_col, 'pos_z'])
+        width_col = 'loc_width'
+            
+        # 3. Sort locations vertically (pos_z), by depth, and horizontally (horiz_col)
+        df_sorted = df.sort_values(by=[depth_col, horiz_col, 'pos_z'])
+        
+        # Group by unique physical stack (pos_x, pos_y)
+        groups = list(df_sorted.groupby([horiz_col, depth_col], sort=False))
         
         # Volume thresholds default
         if volume_thresholds is None:
@@ -601,29 +628,29 @@ class WarehouseVisualizer:
             coords_x = []
             coords_y = []
             cur_seq_x = 0
-            seq_gap = 50.0
-            prev_horiz_coord = None
+            prev_depth_coord = None
             
-            for (h_val, z_val), group in df_sorted.groupby([horiz_col, 'pos_z']):
-                row = group.iloc[0]
-                px = row[horiz_col]
-                pz = row['pos_z']
-                w = row[width_col]
-                h = row['loc_height']
+            for (h_val, d_val), group in groups:
+                row0 = group.iloc[0]
+                w = row0[width_col]
                 
                 if use_physical_spacing:
-                    draw_x = px
+                    draw_x = h_val
                 else:
-                    if prev_horiz_coord is not None and h_val != prev_horiz_coord:
-                        cur_seq_x += w + seq_gap
+                    if prev_depth_coord is not None and d_val != prev_depth_coord:
+                        cur_seq_x += corridor_gap
                     draw_x = cur_seq_x
-                    prev_horiz_coord = h_val
+                    cur_seq_x += w + seq_gap
+                    prev_depth_coord = d_val
                     
                 coords_x.append(draw_x)
                 coords_x.append(draw_x + w)
-                coords_y.append(pz)
-                coords_y.append(pz + h)
-                
+                for _, row in group.iterrows():
+                    pz = row['pos_z']
+                    h = row['loc_height']
+                    coords_y.append(pz)
+                    coords_y.append(pz + h)
+                    
             min_x = min(coords_x) if coords_x else 0.0
             max_x = max(coords_x) if coords_x else 1.0
             min_y = min(coords_y) if coords_y else 0.0
@@ -633,113 +660,113 @@ class WarehouseVisualizer:
             
             # Reset for main loop
             cur_seq_x = 0
-            prev_horiz_coord = None
+            prev_depth_coord = None
             
-            for (h_val, z_val), group in df_sorted.groupby([horiz_col, 'pos_z']):
-                # Since pos_x/pos_y and pos_z define unique bins
-                row = group.iloc[0]
-                px = row[horiz_col]
-                pz = row['pos_z']
-                w = row[width_col]
-                h = row['loc_height']
-                util = row['volume_utilization']
+            for (h_val, d_val), group in groups:
+                row0 = group.iloc[0]
+                w = row0[width_col]
                 
-                # Manage horizontal position based on layout type
                 if use_physical_spacing:
-                    draw_x = px
+                    draw_x = h_val
                 else:
-                    if prev_horiz_coord is not None and h_val != prev_horiz_coord:
-                        cur_seq_x += w + seq_gap
+                    if prev_depth_coord is not None and d_val != prev_depth_coord:
+                        cur_seq_x += corridor_gap
                     draw_x = cur_seq_x
-                    prev_horiz_coord = h_val
+                    cur_seq_x += w + seq_gap
+                    prev_depth_coord = d_val
                 
-                hover_x.append(draw_x + w / 2.0)
-                hover_y.append(pz + h / 2.0)
-                
-                txt = (f"Location ID: {row['loc_id']}<br>"
-                       f"Position: Horiz={px:.1f}, Z={pz:.1f}<br>"
-                       f"Vol Utilization: {util*100:.1f}%<br>"
-                       f"Weight: {row['total_weight']:.1f}<br>"
-                       f"Demand: {row['total_demand']:.1f}<br>"
-                       f"Pick Trips: {row['total_trips']:.1f}<br>"
-                       f"ABC Class: {row['abc_class']}<br>"
-                       f"SKUs: {row['allocated_skus']}")
-                hover_text.append(txt)
-                
-                bg_color = '#ecf0f1'
-                border_color = '#2c3e50'
-                
-                # Determine colors
-                if color_mode == "volume":
-                    if util <= 0:
-                        fill_color = '#ecf0f1'
-                    elif util <= volume_thresholds[0]:
-                        fill_color = '#2ecc71'
-                    elif util <= volume_thresholds[1]:
-                        fill_color = '#f1c40f'
-                    else:
-                        fill_color = '#e74c3c'
-                elif color_mode == "abc":
-                    fill_color = get_abc_color(row['abc_class'], abc_colors)
-                elif color_mode == "demand":
-                    fill_color = self._get_continuous_color(row['total_demand'], demand_thresholds)
-                elif color_mode == "trips":
-                    fill_color = self._get_continuous_color(row['total_trips'], demand_thresholds)
-                elif color_mode == "weight":
-                    fill_color = self._get_continuous_color(row['total_weight'], demand_thresholds)
-                else:
-                    fill_color = bg_color
+                for _, row in group.iterrows():
+                    pz = row['pos_z']
+                    h = row['loc_height']
+                    util = row['volume_utilization']
                     
-                if color_mode == "volume":
-                    # Background box
-                    shapes.append(dict(
-                        type="rect", x0=draw_x, y0=pz, x1=draw_x+w, y1=pz+h,
-                        line=dict(color=border_color, width=1),
-                        fillcolor=bg_color
-                    ))
-                    # Proportional fill from bottom up
-                    if util > 0:
-                        fill_h = h * min(util, 1.0)
+                    hover_x.append(draw_x + w / 2.0)
+                    hover_y.append(pz + h / 2.0)
+                    
+                    txt = (f"Location ID: {row['loc_id']}<br>"
+                           f"Position: Horiz={h_val:.1f}, Depth={d_val:.1f}, Z={pz:.1f}<br>"
+                           f"Vol Utilization: {util*100:.1f}%<br>"
+                           f"Weight: {row['total_weight']:.1f}<br>"
+                           f"Demand: {row['total_demand']:.1f}<br>"
+                           f"Pick Trips: {row['total_trips']:.1f}<br>"
+                           f"ABC Class: {row['abc_class']}<br>"
+                           f"SKUs: {row['allocated_skus']}")
+                    hover_text.append(txt)
+                    
+                    bg_color = '#ecf0f1'
+                    border_color = '#2c3e50'
+                    
+                    # Determine colors
+                    if color_mode == "volume":
+                        if util <= 0:
+                            fill_color = '#ecf0f1'
+                        elif util <= volume_thresholds[0]:
+                            fill_color = '#2ecc71'
+                        elif util <= volume_thresholds[1]:
+                            fill_color = '#f1c40f'
+                        else:
+                            fill_color = '#e74c3c'
+                    elif color_mode == "abc":
+                        fill_color = get_abc_color(row['abc_class'], abc_colors)
+                    elif color_mode == "demand":
+                        fill_color = self._get_continuous_color(row['total_demand'], demand_thresholds)
+                    elif color_mode == "trips":
+                        fill_color = self._get_continuous_color(row['total_trips'], demand_thresholds)
+                    elif color_mode == "weight":
+                        fill_color = self._get_continuous_color(row['total_weight'], demand_thresholds)
+                    else:
+                        fill_color = bg_color
+                        
+                    if color_mode == "volume":
+                        # Background box
                         shapes.append(dict(
-                            type="rect", x0=draw_x, y0=pz, x1=draw_x+w, y1=pz+fill_h,
-                            line=dict(width=0),
+                            type="rect", x0=draw_x, y0=pz, x1=draw_x+w, y1=pz+h,
+                            line=dict(color=border_color, width=1),
+                            fillcolor=bg_color
+                        ))
+                        # Proportional fill from bottom up
+                        if util > 0:
+                            fill_h = h * min(util, 1.0)
+                            shapes.append(dict(
+                                type="rect", x0=draw_x, y0=pz, x1=draw_x+w, y1=pz+fill_h,
+                                line=dict(width=0),
+                                fillcolor=fill_color
+                            ))
+                    else:
+                        shapes.append(dict(
+                            type="rect", x0=draw_x, y0=pz, x1=draw_x+w, y1=pz+h,
+                            line=dict(color=border_color, width=1),
                             fillcolor=fill_color
                         ))
-                else:
-                    shapes.append(dict(
-                        type="rect", x0=draw_x, y0=pz, x1=draw_x+w, y1=pz+h,
-                        line=dict(color=border_color, width=1),
-                        fillcolor=fill_color
-                    ))
-                    
-                if show_labels:
-                    indicator = ""
-                    if color_mode == "volume":
-                        indicator = f"{util*100:.0f}%"
-                    elif color_mode == "demand":
-                        indicator = f"{row['total_demand']:.0f}"
-                    elif color_mode == "trips":
-                        indicator = f"{row['total_trips']:.0f}"
-                    elif color_mode == "weight":
-                        indicator = f"{row['total_weight']:.1f}"
-                    
-                    effective_label_content = label_content
-                    if color_mode == "abc" and label_content == "indicator":
-                        effective_label_content = "address"
                         
-                    if effective_label_content == "address":
-                        label_text = self._get_end_address(row['loc_id'])
-                    elif effective_label_content == "indicator":
-                        label_text = indicator
-                    else:
-                        label_text = ""
+                    if show_labels:
+                        indicator = ""
+                        if color_mode == "volume":
+                            indicator = f"{util*100:.0f}%"
+                        elif color_mode == "demand":
+                            indicator = f"{row['total_demand']:.0f}"
+                        elif color_mode == "trips":
+                            indicator = f"{row['total_trips']:.0f}"
+                        elif color_mode == "weight":
+                            indicator = f"{row['total_weight']:.1f}"
                         
-                    if label_text:
-                        fs = self._get_plotly_fontsize(label_text, w, h, total_range_x, total_range_y, fig_width=1200, fig_height=700)
-                        label_x.append(draw_x + w / 2.0)
-                        label_y.append(pz + h / 2.0)
-                        label_texts.append(label_text)
-                        label_sizes.append(fs)
+                        effective_label_content = label_content
+                        if color_mode == "abc" and label_content == "indicator":
+                            effective_label_content = "address"
+                            
+                        if effective_label_content == "address":
+                            label_text = self._get_end_address(row['loc_id'])
+                        elif effective_label_content == "indicator":
+                            label_text = indicator
+                        else:
+                            label_text = ""
+                            
+                        if label_text:
+                            fs = self._get_plotly_fontsize(label_text, w, h, total_range_x, total_range_y, fig_width=1200, fig_height=700)
+                            label_x.append(draw_x + w / 2.0)
+                            label_y.append(pz + h / 2.0)
+                            label_texts.append(label_text)
+                            label_sizes.append(fs)
                     
             fig.add_trace(go.Scatter(
                 x=hover_x, y=hover_y,
@@ -776,55 +803,56 @@ class WarehouseVisualizer:
             ax.set_facecolor('white')
             
             cur_seq_x = 0
-            seq_gap = 50.0
-            prev_horiz_coord = None
+            prev_depth_coord = None
             
-            for (h_val, z_val), group in df_sorted.groupby([horiz_col, 'pos_z']):
-                row = group.iloc[0]
-                px = row[horiz_col]
-                pz = row['pos_z']
-                w = row[width_col]
-                h = row['loc_height']
-                util = row['volume_utilization']
+            for (h_val, d_val), group in groups:
+                row0 = group.iloc[0]
+                w = row0[width_col]
                 
                 if use_physical_spacing:
-                    draw_x = px
+                    draw_x = h_val
                 else:
-                    if prev_horiz_coord is not None and h_val != prev_horiz_coord:
-                        cur_seq_x += w + seq_gap
+                    if prev_depth_coord is not None and d_val != prev_depth_coord:
+                        cur_seq_x += corridor_gap
                     draw_x = cur_seq_x
-                    prev_horiz_coord = h_val
+                    cur_seq_x += w + seq_gap
+                    prev_depth_coord = d_val
                     
-                bg_color = '#ecf0f1'
-                border_color = '#2c3e50'
-                
-                if color_mode == "volume":
-                    if util <= 0:
-                        fill_color = '#ecf0f1'
-                    elif util <= volume_thresholds[0]:
-                        fill_color = '#2ecc71'
-                    elif util <= volume_thresholds[1]:
-                        fill_color = '#f1c40f'
+                for _, row in group.iterrows():
+                    pz = row['pos_z']
+                    h = row['loc_height']
+                    util = row['volume_utilization']
+                    
+                    bg_color = '#ecf0f1'
+                    border_color = '#2c3e50'
+                    
+                    if color_mode == "volume":
+                        if util <= 0:
+                            fill_color = '#ecf0f1'
+                        elif util <= volume_thresholds[0]:
+                            fill_color = '#2ecc71'
+                        elif util <= volume_thresholds[1]:
+                            fill_color = '#f1c40f'
+                        else:
+                            fill_color = '#e74c3c'
+                    elif color_mode == "abc":
+                        fill_color = get_abc_color(row['abc_class'], abc_colors)
+                    elif color_mode == "demand":
+                        fill_color = self._get_continuous_color(row['total_demand'], demand_thresholds)
+                    elif color_mode == "trips":
+                        fill_color = self._get_continuous_color(row['total_trips'], demand_thresholds)
+                    elif color_mode == "weight":
+                        fill_color = self._get_continuous_color(row['total_weight'], demand_thresholds)
                     else:
-                        fill_color = '#e74c3c'
-                elif color_mode == "abc":
-                    fill_color = get_abc_color(row['abc_class'], abc_colors)
-                elif color_mode == "demand":
-                    fill_color = self._get_continuous_color(row['total_demand'], demand_thresholds)
-                elif color_mode == "trips":
-                    fill_color = self._get_continuous_color(row['total_trips'], demand_thresholds)
-                elif color_mode == "weight":
-                    fill_color = self._get_continuous_color(row['total_weight'], demand_thresholds)
-                else:
-                    fill_color = bg_color
-                    
-                if color_mode == "volume":
-                    ax.add_patch(patches.Rectangle((draw_x, pz), w, h, linewidth=0.5, edgecolor=border_color, facecolor=bg_color))
-                    if util > 0:
-                        fill_h = h * min(util, 1.0)
-                        ax.add_patch(patches.Rectangle((draw_x, pz), w, fill_h, linewidth=0, facecolor=fill_color))
-                else:
-                    ax.add_patch(patches.Rectangle((draw_x, pz), w, h, linewidth=0.5, edgecolor=border_color, facecolor=fill_color))
+                        fill_color = bg_color
+                        
+                    if color_mode == "volume":
+                        ax.add_patch(patches.Rectangle((draw_x, pz), w, h, linewidth=0.5, edgecolor=border_color, facecolor=bg_color))
+                        if util > 0:
+                            fill_h = h * min(util, 1.0)
+                            ax.add_patch(patches.Rectangle((draw_x, pz), w, fill_h, linewidth=0, facecolor=fill_color))
+                    else:
+                        ax.add_patch(patches.Rectangle((draw_x, pz), w, h, linewidth=0.5, edgecolor=border_color, facecolor=fill_color))
             
             ax.autoscale()
             ax.set_aspect('equal')
@@ -834,49 +862,51 @@ class WarehouseVisualizer:
             
             if show_labels:
                 cur_seq_x = 0
-                prev_horiz_coord = None
+                prev_depth_coord = None
                 
-                for (h_val, z_val), group in df_sorted.groupby([horiz_col, 'pos_z']):
-                    row = group.iloc[0]
-                    px = row[horiz_col]
-                    pz = row['pos_z']
-                    w = row[width_col]
-                    h = row['loc_height']
-                    util = row['volume_utilization']
+                for (h_val, d_val), group in groups:
+                    row0 = group.iloc[0]
+                    w = row0[width_col]
                     
                     if use_physical_spacing:
-                        draw_x = px
+                        draw_x = h_val
                     else:
-                        if prev_horiz_coord is not None and h_val != prev_horiz_coord:
-                            cur_seq_x += w + seq_gap
+                        if prev_depth_coord is not None and d_val != prev_depth_coord:
+                            cur_seq_x += corridor_gap
                         draw_x = cur_seq_x
-                        prev_horiz_coord = h_val
+                        cur_seq_x += w + seq_gap
+                        prev_depth_coord = d_val
                         
-                    indicator = ""
-                    if color_mode == "volume":
-                        indicator = f"{util*100:.0f}%"
-                    elif color_mode == "demand":
-                        indicator = f"{row['total_demand']:.0f}"
-                    elif color_mode == "trips":
-                        indicator = f"{row['total_trips']:.0f}"
-                    elif color_mode == "weight":
-                        indicator = f"{row['total_weight']:.1f}"
-                    
-                    effective_label_content = label_content
-                    if color_mode == "abc" and label_content == "indicator":
-                        effective_label_content = "address"
+                    for _, row in group.iterrows():
+                        pz = row['pos_z']
+                        h = row['loc_height']
+                        util = row['volume_utilization']
                         
-                    if effective_label_content == "address":
-                        label_text = self._get_end_address(row['loc_id'])
-                    elif effective_label_content == "indicator":
-                        label_text = indicator
-                    else:
-                        label_text = ""
+                        indicator = ""
+                        if color_mode == "volume":
+                            indicator = f"{util*100:.0f}%"
+                        elif color_mode == "demand":
+                            indicator = f"{row['total_demand']:.0f}"
+                        elif color_mode == "trips":
+                            indicator = f"{row['total_trips']:.0f}"
+                        elif color_mode == "weight":
+                            indicator = f"{row['total_weight']:.1f}"
                         
-                    if label_text:
-                        fs = self._get_matplotlib_fontsize(ax, label_text, w, h)
-                        ax.text(draw_x + w / 2.0, pz + h / 2.0, label_text, 
-                                ha='center', va='center', fontsize=fs, color='#555555')
+                        effective_label_content = label_content
+                        if color_mode == "abc" and label_content == "indicator":
+                            effective_label_content = "address"
+                            
+                        if effective_label_content == "address":
+                            label_text = self._get_end_address(row['loc_id'])
+                        elif effective_label_content == "indicator":
+                            label_text = indicator
+                        else:
+                            label_text = ""
+                            
+                        if label_text:
+                            fs = self._get_matplotlib_fontsize(ax, label_text, w, h)
+                            ax.text(draw_x + w / 2.0, pz + h / 2.0, label_text, 
+                                    ha='center', va='center', fontsize=fs, color='#555555')
             
             return fig
         else:
