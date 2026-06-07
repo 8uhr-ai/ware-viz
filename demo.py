@@ -38,7 +38,6 @@ def run_demo():
              fill_color="rgba(52, 152, 219, 0.25)", border_color="rgba(52, 152, 219, 0.45)", border_style="-")
     ]
     top_lines = [
-        dict(coordinate=4250, axis="y", label="Zone Boundary (Y=4250)", color="#7f8c8d", linestyle="--", linewidth=1.5),
         dict(coordinate=600, axis="x", label="Fast Zone", color="#9b59b6", linestyle=":", linewidth=1.5)
     ]
     
@@ -47,10 +46,7 @@ def run_demo():
         dict(x0=None, x1=None, y0=700, y1=1500, label="Ergo Zone (700-1500mm)", 
              fill_color="rgba(46, 204, 113, 0.25)", border_color="rgba(46, 204, 113, 0.45)", border_style="-")
     ]
-    front_lines = [
-        dict(coordinate=700, axis="y", label="Ergo Lower Limit (700mm)", color="#27ae60", linestyle=":", linewidth=1.2),
-        dict(coordinate=1500, axis="y", label="Ergo Upper Limit (1500mm)", color="#27ae60", linestyle=":", linewidth=1.2)
-    ]
+    front_lines = []
     
     # 4. Generate Top Footprint Views (Matplotlib, show_labels=True, label_content="indicator")
     color_modes = ["volume", "demand", "trips", "weight", "abc"]
