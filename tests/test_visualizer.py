@@ -105,4 +105,31 @@ def test_labels_and_indicators(datasets):
     with pytest.raises(ValueError):
         viz.plot_front(df_loc_filtered, df_parts, df_alloc, show_labels=True, label_content="both")
 
+def test_custom_overlays(datasets):
+    df_loc, df_parts, df_alloc = datasets
+    viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
+    
+    top_areas = [dict(x0=0, x1=1000, y0=0, y1=2000, label="Test Area", fill_color="rgba(0,0,255,0.1)")]
+    top_lines = [dict(coordinate=1500, axis="x", label="Test Line", color="red")]
+    
+    fig_top = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", 
+                           engine="matplotlib", dotted_lines=top_lines, custom_areas=top_areas)
+    assert isinstance(fig_top, plt.Figure)
+    plt.close(fig_top)
+    
+    fig_top_plotly = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", 
+                                  engine="plotly", dotted_lines=top_lines, custom_areas=top_areas)
+    assert isinstance(fig_top_plotly, go.Figure)
+    
+    df_loc_filtered = df_loc[df_loc['loc_id'].str.startswith('A1')]
+    fig_front = viz.plot_front(df_loc_filtered, df_parts, df_alloc, color_mode="volume", 
+                               engine="matplotlib", dotted_lines=top_lines, custom_areas=top_areas)
+    assert isinstance(fig_front, plt.Figure)
+    plt.close(fig_front)
+    
+    fig_front_plotly = viz.plot_front(df_loc_filtered, df_parts, df_alloc, color_mode="volume", 
+                                       engine="plotly", dotted_lines=top_lines, custom_areas=top_areas)
+    assert isinstance(fig_front_plotly, go.Figure)
+
+
 

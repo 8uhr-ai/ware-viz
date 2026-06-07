@@ -28,27 +28,47 @@ def run_demo():
     # 3. Initialize visualizer
     viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
     
+    # Define custom lines and transparent area overlays for demo purposes
+    # Top View: Divide warehouse into Zone 1 (fast pick, first 3 rows top-down) and Zone 2 (bulk/slow storage, rest)
+    top_areas = [
+        dict(x0=None, x1=None, y0=-100, y1=3400, label="Zone 1 - Fast Pick", 
+             fill_color="rgba(231, 76, 60, 0.05)", border_color="rgba(231, 76, 60, 0.2)", border_style="--", label_align="top_left"),
+        dict(x0=None, x1=None, y0=3400, y1=6300, label="Zone 2 - Slow Storage", 
+             fill_color="rgba(52, 152, 219, 0.05)", border_color="rgba(52, 152, 219, 0.2)", border_style="--", label_align="top_left")
+    ]
+    top_lines = [
+        dict(coordinate=3400, axis="y", label="Zone Boundary (Y=3400)", color="#7f8c8d", linestyle="--", linewidth=1.5)
+    ]
+    
+    # Front View: Define standard optimal reach ergonomics zone (700mm to 1500mm height)
+    front_areas = [
+        dict(x0=None, x1=None, y0=700, y1=1500, label="Ergo Zone (Optimal Reach)", 
+             fill_color="rgba(46, 204, 113, 0.05)", border_color="rgba(46, 204, 113, 0.2)", border_style="--", label_align="top_left")
+    ]
+    front_lines = [
+        dict(coordinate=700, axis="y", label="Ergo Lower Limit (700mm)", color="#27ae60", linestyle=":", linewidth=1.2, label_align="left"),
+        dict(coordinate=1500, axis="y", label="Ergo Upper Limit (1500mm)", color="#27ae60", linestyle=":", linewidth=1.2, label_align="left")
+    ]
+    
     # 4. Generate Top Footprint Views (Matplotlib, show_labels=True, label_content="indicator")
     color_modes = ["volume", "demand", "trips", "weight", "abc"]
     for mode in color_modes:
         print(f"Generating Top View footprint (color_mode={mode})...")
-        fig = viz.plot_top(df_loc, df_parts, df_alloc, color_mode=mode, engine="matplotlib", show_labels=True, label_content="indicator")
+        fig = viz.plot_top(df_loc, df_parts, df_alloc, color_mode=mode, engine="matplotlib", 
+                           show_labels=True, label_content="indicator", dotted_lines=top_lines, custom_areas=top_areas)
         path = os.path.join(plots_dir, f"top_view_{mode}.png")
         fig.savefig(path, bbox_inches='tight', dpi=300)
         plt.close(fig)
         print(f"Saved: {path}")
         
     # 5. Define Front Elevation View Filter
-    # Example: How to filter locations manually from the first location ID to the last location ID:
-    # df_loc_aisle = df_loc[(df_loc['loc_id'] >= 'A1-00001') & (df_loc['loc_id'] <= 'A3-00090')]
-    
-    # For the demo, we plot the full warehouse range (all aisles side-by-side):
     df_loc_aisle = df_loc
     
     # 6. Generate Front Elevation Views (Matplotlib, show_labels=True, label_content="indicator")
     for mode in color_modes:
         print(f"Generating Front View elevation (color_mode={mode})...")
-        fig = viz.plot_front(df_loc_aisle, df_parts, df_alloc, color_mode=mode, engine="matplotlib", show_labels=True, label_content="indicator")
+        fig = viz.plot_front(df_loc_aisle, df_parts, df_alloc, color_mode=mode, engine="matplotlib", 
+                             show_labels=True, label_content="indicator", dotted_lines=front_lines, custom_areas=front_areas)
         path = os.path.join(plots_dir, f"front_view_{mode}.png")
         fig.savefig(path, bbox_inches='tight', dpi=300)
         plt.close(fig)
@@ -56,7 +76,8 @@ def run_demo():
         
     # 7. Generate Front Elevation View with Address Labels (Matplotlib, show_labels=True, label_content="address")
     print("Generating Front View elevation with address labels...")
-    fig = viz.plot_front(df_loc_aisle, df_parts, df_alloc, color_mode="volume", engine="matplotlib", show_labels=True, label_content="address")
+    fig = viz.plot_front(df_loc_aisle, df_parts, df_alloc, color_mode="volume", engine="matplotlib", 
+                         show_labels=True, label_content="address", dotted_lines=front_lines, custom_areas=front_areas)
     path = os.path.join(plots_dir, "front_view_address.png")
     fig.savefig(path, bbox_inches='tight', dpi=300)
     plt.close(fig)

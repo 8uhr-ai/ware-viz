@@ -84,13 +84,26 @@ df_alloc = pd.read_csv("data/allocations.csv")
 # Supported anchors: 'bottom_left_back', 'center'
 viz = WarehouseVisualizer(unit="mm", anchor_point="bottom_left_back")
 
-# 3. Render Top View Footprint with labeling (returns a Plotly Figure)
-fig_top = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", show_labels=True, label_content="indicator")
+# 3. Render Top View Footprint with labeling, custom zones, and boundary lines (returns a Plotly Figure)
+top_areas = [
+    dict(x0=None, x1=None, y0=-100, y1=3400, label="Zone 1 - Fast Pick", 
+         fill_color="rgba(231, 76, 60, 0.05)", border_color="rgba(231, 76, 60, 0.2)", border_style="--")
+]
+top_lines = [
+    dict(coordinate=3400, axis="y", label="Zone Boundary (Y=3400)", color="#7f8c8d")
+]
+fig_top = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", show_labels=True, 
+                       label_content="indicator", dotted_lines=top_lines, custom_areas=top_areas)
 fig_top.show()
 
-# 4. Filter for Aisle A2 subset and render Front elevation with address labels
+# 4. Filter for Aisle A2 subset and render Front elevation with address labels and ergo zone
+front_areas = [
+    dict(x0=None, x1=None, y0=700, y1=1500, label="Ergo Zone", 
+         fill_color="rgba(46, 204, 113, 0.05)", border_color="rgba(46, 204, 113, 0.2)", border_style="--")
+]
 df_aisle = df_loc[(df_loc['loc_id'].str.startswith('A2')) & (df_loc['pos_y'] <= 1990.0)]
-fig_front = viz.plot_front(df_aisle, df_parts, df_alloc, color_mode="abc", show_labels=True, label_content="address")
+fig_front = viz.plot_front(df_aisle, df_parts, df_alloc, color_mode="abc", show_labels=True, 
+                           label_content="address", custom_areas=front_areas)
 fig_front.show()
 ```
 
@@ -166,6 +179,29 @@ To display text overlays directly inside each location box:
     *   `"address"`: Displays the end portion of the location ID (e.g., `001` to `999` using the last 3 characters, or a collapsed vertical stack range in top view like `001\n016`).
 *   *Note: Displaying both the address and indicator simultaneously is not supported due to the compact physical dimensions of the shelf slots.*
 *   **Auto-sizing Text:** Font sizes are dynamically calculated in real-time (down to `1pt` if necessary) to fit the physical text boundaries of each location box without overlapping or overflowing.
+
+### Custom Overlays (Dotted Lines & Translucent Areas)
+To support plotting standard guidelines (like optimal reach ergonomic zones or custom warehouse picking zones), both `plot_top` and `plot_front` support custom boundary lines and translucent area overlays.
+
+#### 1. Dotted Lines (`dotted_lines` list of dict)
+Overlay straight lines across the entire chart. Each line definition is a dictionary:
+*   `coordinate` (float): Position along the specified axis.
+*   `axis` (str): `'x'` or `'y'` (default `'x'`).
+*   `label` (str, optional): A text label drawn next to the line.
+*   `color` (str, optional): Line and text color (default `'#7f8c8d'`).
+*   `linestyle` (str, optional): Line style, e.g., `'--'` (dashed), `':'` (dotted), `'-'` (solid) (default `'--'`).
+*   `linewidth` (float, optional): Line thickness (default `1.5`).
+*   `label_align` (str, optional): Label alignment position. For X-axis lines: `'top'` or `'bottom'`. For Y-axis lines: `'left'` or `'right'`.
+
+#### 2. Translucent Areas (`custom_areas` list of dict)
+Overlay translucent rectangular shapes. Useful for highlighting zones (e.g., bulk vs. pick zones, ergonomic heights). Each area definition is a dictionary:
+*   `x0`, `x1`, `y0`, `y1` (float, optional): The boundary coordinates in physical units. If `None` or omitted, the area dynamically extends to the current plot boundaries.
+*   `label` (str, optional): A text label drawn inside the area.
+*   `fill_color` (str, optional): Translucent fill color supporting HTML/hex or `rgba(r,g,b,a)` syntax (default `'rgba(52, 152, 219, 0.1)'`).
+*   `border_color` (str, optional): Border color. Use `'none'` to omit (default `'rgba(52, 152, 219, 0.3)'`).
+*   `border_style` (str, optional): Border style, e.g., `'-'`, `'--'`, `':'` (default `'-'`).
+*   `border_width` (float, optional): Border thickness (default `1.0`).
+*   `label_align` (str, optional): Label alignment position: `'top_left'`, `'top_right'`, `'bottom_left'`, `'bottom_right'`, or `'center'` (default `'center'`).
 
 ---
 
