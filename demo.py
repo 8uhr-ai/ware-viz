@@ -30,7 +30,7 @@ def run_demo():
     
     # 4. Generate and save Top View - Volume Fill (Matplotlib)
     print("Generating Top View footprint (Volume Utilization)...")
-    fig_top_vol = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", engine="matplotlib")
+    fig_top_vol = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="volume", engine="matplotlib", show_labels=True)
     top_vol_path = os.path.join(plots_dir, "top_view_volume_utilization.png")
     fig_top_vol.savefig(top_vol_path, bbox_inches='tight', dpi=150)
     plt.close(fig_top_vol)
@@ -38,7 +38,7 @@ def run_demo():
     
     # 5. Generate and save Top View - ABC Class (Matplotlib)
     print("Generating Top View footprint (ABC Class Heatmap)...")
-    fig_top_abc = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="abc", engine="matplotlib")
+    fig_top_abc = viz.plot_top(df_loc, df_parts, df_alloc, color_mode="abc", engine="matplotlib", show_labels=True)
     top_abc_path = os.path.join(plots_dir, "top_view_abc_heatmap.png")
     fig_top_abc.savefig(top_abc_path, bbox_inches='tight', dpi=150)
     plt.close(fig_top_abc)
@@ -49,7 +49,7 @@ def run_demo():
     df_loc_aisle = df_loc[df_loc['loc_id'].str.startswith('A1')]
     
     print("Generating Front View elevation for Aisle A1 (Volume Utilization)...")
-    fig_front_vol = viz.plot_front(df_loc_aisle, df_parts, df_alloc, color_mode="volume", engine="matplotlib")
+    fig_front_vol = viz.plot_front(df_loc_aisle, df_parts, df_alloc, color_mode="volume", engine="matplotlib", show_labels=True)
     front_vol_path = os.path.join(plots_dir, "front_view_aisle_a1_volume.png")
     fig_front_vol.savefig(front_vol_path, bbox_inches='tight', dpi=150)
     plt.close(fig_front_vol)
@@ -57,7 +57,7 @@ def run_demo():
     
     # 7. Generate and save Front View - ABC Class (Matplotlib)
     print("Generating Front View elevation for Aisle A1 (ABC Class)...")
-    fig_front_abc = viz.plot_front(df_loc_aisle, df_parts, df_alloc, color_mode="abc", engine="matplotlib")
+    fig_front_abc = viz.plot_front(df_loc_aisle, df_parts, df_alloc, color_mode="abc", engine="matplotlib", show_labels=True)
     front_abc_path = os.path.join(plots_dir, "front_view_aisle_a1_abc.png")
     fig_front_abc.savefig(front_abc_path, bbox_inches='tight', dpi=150)
     plt.close(fig_front_abc)
